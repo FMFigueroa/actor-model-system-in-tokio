@@ -1,28 +1,41 @@
+use serde::{Deserialize, Serialize};
+use std::{fs::File, io::Write};
 use tokio::{
     sync::mpsc,
     time::{sleep, Duration},
 };
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum Order {
     BUY,
     SELL,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Message {
-    pub order: Order, // BUY or SELL
-    pub symbol: String,
+    pub order: Order,
+    pub ticker: String,
     pub amount: f32,
 }
 
 // Definimos un actor que recibe mensajes y los procesa
 async fn actor(mut receiver: mpsc::Receiver<Message>) {
+    let mut messages: Vec<Message> = Vec::new();
+
     while let Some(message) = receiver.recv().await {
         println!("Actor recibió el mensaje: {:?}", message);
-        // Simulamos un procesamiento de mensaje
+
+        // Almacena los mensajes
+        messages.push(message.clone());
+
+        // Guardamos los mensajes en un archivo JSON al finalizar
+        let json_data = serde_json::to_string(&messages).unwrap();
+        let mut file = File::create("db/messages.json").unwrap();
+        file.write_all(json_data.as_bytes()).unwrap();
+
+        // Wait while saving
         sleep(Duration::from_secs(1)).await;
-        println!("Actor ha terminado de procesar el mensaje");
+        println!("message saved with success.!");
     }
 }
 
@@ -32,27 +45,27 @@ async fn main() {
     let (tx, rx) = mpsc::channel::<Message>(1);
 
     // Creamos un actor que recibirá mensajes,
-    // Le pasamos el recptor rx estableciendo un canal de comunicación.
+    // le pasamos el receptor rx estableciendo un canal de comunicación.
     tokio::spawn(async move {
         actor(rx).await;
     });
 
-    // Buffer de Mensajes para enviar al actor
+    // Buffer de mensajes para enviar al actor
     let buffer = [
         Message {
             order: Order::BUY,
             amount: 5.5,
-            symbol: "BTC".to_owned(),
+            ticker: "BTC".to_owned(),
         },
         Message {
             order: Order::BUY,
             amount: 9.5,
-            symbol: "ETH".to_owned(),
+            ticker: "ETH".to_owned(),
         },
         Message {
             order: Order::BUY,
             amount: 2.5,
-            symbol: "PKT".to_owned(),
+            ticker: "PKT".to_owned(),
         },
     ];
 
