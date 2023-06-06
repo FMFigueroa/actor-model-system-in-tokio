@@ -39,8 +39,8 @@ impl OrderBookActor {
         } else {
             self.total_invested += message.amount;
             println!(
-                "processing purchase, total invested: {}",
-                self.total_invested
+                "processing purchase, total invested: {} {}",
+                self.total_invested, message.ticker
             );
             let _ = message.respond_to.send(1);
         }
@@ -97,7 +97,7 @@ async fn main() {
     // tx_one thread 1
     tokio::spawn(async move {
         for _ in 1..4 {
-            let buy_actor = BuyOrder::new(5.0, "BYND".to_owned(), tx_one.clone());
+            let buy_actor = BuyOrder::new(5.0, "BTC".to_owned(), tx_one.clone());
             buy_actor.send().await;
         }
         drop(tx_one);
@@ -106,7 +106,7 @@ async fn main() {
     // tx thread 2
     tokio::spawn(async move {
         for _ in 1..4 {
-            let buy_actor = BuyOrder::new(5.0, "PLTR".to_owned(), tx.clone());
+            let buy_actor = BuyOrder::new(5.0, "ETH".to_owned(), tx.clone());
             buy_actor.send().await;
         }
         drop(tx);
