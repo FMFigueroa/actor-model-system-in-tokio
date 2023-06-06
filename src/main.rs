@@ -1,85 +1,118 @@
-use serde::{Deserialize, Serialize};
-use std::{fs::File, io::Write};
-use tokio::{
-    sync::mpsc,
-    time::{sleep, Duration},
-};
+use tokio::sync::{mpsc, mpsc::Sender, oneshot};
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone)]
 pub enum Order {
     BUY,
     SELL,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug)]
 pub struct Message {
     pub order: Order,
     pub ticker: String,
     pub amount: f32,
+    pub respond_to: oneshot::Sender<u32>,
 }
 
-// Definimos un actor que recibe mensajes y los procesa
-async fn actor(mut receiver: mpsc::Receiver<Message>) {
-    let mut messages: Vec<Message> = Vec::new();
+pub struct OrderBookActor {
+    pub receiver: mpsc::Receiver<Message>,
+    pub total_invested: f32,
+    pub investment_cap: f32,
+}
 
-    while let Some(message) = receiver.recv().await {
-        println!("Actor recibió el mensaje: {:?}", message);
+impl OrderBookActor {
+    fn new(receiver: mpsc::Receiver<Message>, investment_cap: f32) -> Self {
+        return OrderBookActor {
+            receiver,
+            total_invested: 0.0,
+            investment_cap,
+        };
+    }
 
-        // Almacena los mensajes
-        messages.push(message.clone());
+    fn handle_message(&mut self, message: Message) {
+        if message.amount + self.total_invested >= self.investment_cap {
+            println!(
+                "rejecting purchase, total invested: {}",
+                self.total_invested
+            );
+            let _ = message.respond_to.send(0);
+        } else {
+            self.total_invested += message.amount;
+            println!(
+                "processing purchase, total invested: {}",
+                self.total_invested
+            );
+            let _ = message.respond_to.send(1);
+        }
+    }
 
-        // Guardamos los mensajes en un archivo JSON al finalizar
-        let json_data = serde_json::to_string(&messages).unwrap();
-        let mut file = File::create("db/messages.json").unwrap();
-        file.write_all(json_data.as_bytes()).unwrap();
+    async fn run(mut self) {
+        println!("actor is running");
+        while let Some(msg) = self.receiver.recv().await {
+            self.handle_message(msg);
+        }
+    }
+}
 
-        // Wait while saving
-        sleep(Duration::from_secs(1)).await;
-        println!("message saved with success.!");
+struct BuyOrder {
+    pub ticker: String,
+    pub amount: f32,
+    pub order: Order,
+    pub sender: Sender<Message>,
+}
+
+impl BuyOrder {
+    fn new(amount: f32, ticker: String, sender: Sender<Message>) -> Self {
+        return BuyOrder {
+            ticker,
+            amount,
+            order: Order::BUY,
+            sender,
+        };
+    }
+
+    async fn send(self) {
+        let (send, recv) = oneshot::channel();
+        let message = Message {
+            order: self.order,
+            amount: self.amount,
+            ticker: self.ticker,
+            respond_to: send,
+        };
+        let _ = self.sender.send(message).await;
+        match recv.await {
+            Err(e) => println!("{}", e),
+            Ok(outcome) => println!("here is the outcome: {}", outcome),
+        }
     }
 }
 
 #[tokio::main]
 async fn main() {
-    // Creamos un canal para enviar mensajes entre actores
+    // init channel
     let (tx, rx) = mpsc::channel::<Message>(1);
+    // other thread
+    let tx_one = tx.clone();
 
-    // Creamos un actor que recibirá mensajes,
-    // le pasamos el receptor rx estableciendo un canal de comunicación.
+    // tx_one thread 1
     tokio::spawn(async move {
-        actor(rx).await;
+        for _ in 1..4 {
+            let buy_actor = BuyOrder::new(5.0, "BYND".to_owned(), tx_one.clone());
+            buy_actor.send().await;
+        }
+        drop(tx_one);
     });
 
-    // Buffer de mensajes para enviar al actor
-    let buffer = [
-        Message {
-            order: Order::BUY,
-            amount: 5.5,
-            ticker: "BTC".to_owned(),
-        },
-        Message {
-            order: Order::BUY,
-            amount: 9.5,
-            ticker: "ETH".to_owned(),
-        },
-        Message {
-            order: Order::BUY,
-            amount: 2.5,
-            ticker: "PKT".to_owned(),
-        },
-    ];
-
-    // Enviamos mensajes a través del canal
-    for message in buffer {
-        if let Err(e) = tx.send(message.clone()).await {
-            println!("Error al enviar el mensaje: {:?}", e);
-            break;
+    // tx thread 2
+    tokio::spawn(async move {
+        for _ in 1..4 {
+            let buy_actor = BuyOrder::new(5.0, "PLTR".to_owned(), tx.clone());
+            buy_actor.send().await;
         }
-        println!("Mensaje enviado: {:?}", message);
-        // Simulamos un intervalo de tiempo entre el envío de mensajes
-        sleep(Duration::from_secs(2)).await;
-    }
+        drop(tx);
+    });
 
-    // Cerramos el canal para indicar que no se enviarán más mensajes
-    drop(tx);
+    // init actor
+    let actor = OrderBookActor::new(rx, 20.0);
+    actor.run().await;
 }
