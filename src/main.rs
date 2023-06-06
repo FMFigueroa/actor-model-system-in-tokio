@@ -1,5 +1,6 @@
 use tokio::sync::{mpsc, mpsc::Sender, oneshot};
 
+//==============================================================================
 #[derive(Debug, Clone)]
 pub enum Order {
     BUY,
@@ -11,7 +12,7 @@ pub struct Message {
     pub order: Order,
     pub ticker: String,
     pub amount: f32,
-    pub respond_to: oneshot::Sender<u32>,
+    pub respond_to: oneshot::Sender<String>,
 }
 
 pub struct OrderBookActor {
@@ -21,6 +22,7 @@ pub struct OrderBookActor {
 }
 
 impl OrderBookActor {
+    // Constructor
     fn new(receiver: mpsc::Receiver<Message>, investment_cap: f32) -> Self {
         return OrderBookActor {
             receiver,
@@ -32,17 +34,21 @@ impl OrderBookActor {
     fn handle_message(&mut self, message: Message) {
         if message.amount + self.total_invested >= self.investment_cap {
             println!(
-                "rejecting purchase, total invested: {}",
-                self.total_invested
+                "rejecting purchase, total invested: {1}{0}",
+                self.total_invested, message.ticker
             );
-            let _ = message.respond_to.send(0);
+            let msn = String::from("fail");
+            let _ = message.respond_to.send(msn);
         } else {
             self.total_invested += message.amount;
             println!(
-                "processing purchase, total invested: {} {}",
+                "processing purchase, total invested: {1}{0}",
                 self.total_invested, message.ticker
             );
-            let _ = message.respond_to.send(1);
+
+            // Respuesta al
+            let msn = String::from("success");
+            let _ = message.respond_to.send(msn);
         }
     }
 
@@ -54,6 +60,7 @@ impl OrderBookActor {
     }
 }
 
+//==============================================================================
 struct BuyOrder {
     pub ticker: String,
     pub amount: f32,
@@ -87,6 +94,7 @@ impl BuyOrder {
     }
 }
 
+//==============================================================================
 #[tokio::main]
 async fn main() {
     // init channel
@@ -97,19 +105,19 @@ async fn main() {
     // tx_one thread 1
     tokio::spawn(async move {
         for _ in 1..4 {
-            let buy_actor = BuyOrder::new(5.0, "BTC".to_owned(), tx_one.clone());
+            let buy_actor = BuyOrder::new(5.0, "$".to_owned(), tx.clone());
             buy_actor.send().await;
         }
-        drop(tx_one);
+        drop(tx);
     });
 
     // tx thread 2
     tokio::spawn(async move {
         for _ in 1..4 {
-            let buy_actor = BuyOrder::new(5.0, "ETH".to_owned(), tx.clone());
+            let buy_actor = BuyOrder::new(5.0, "$".to_owned(), tx_one.clone());
             buy_actor.send().await;
         }
-        drop(tx);
+        drop(tx_one);
     });
 
     // init actor
