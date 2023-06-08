@@ -41,7 +41,7 @@ impl OrderBookActor {
                 } else {
                     self.total_invested = self.total_invested - message.amount;
                     println!(
-                        "Procesando compra, cantidad: {}{}",
+                        "Procesando compra, cantidad: {}{:0.2}",
                         message.ticker, message.amount
                     );
                     let msn = String::from("success");
@@ -52,7 +52,7 @@ impl OrderBookActor {
                 self.total_invested = self.total_invested + message.amount;
                 // Simplemente imprime un mensaje para simular el procesamiento de una orden de venta
                 println!(
-                    "Procesando venta, cantidad: {}{}",
+                    "Procesando venta, cantidad: {}{:0.2}",
                     message.ticker, message.amount
                 );
                 let msn = String::from("success");
@@ -61,14 +61,14 @@ impl OrderBookActor {
         }
 
         println!(
-            "Saldo disponible: {}",
+            "Saldo disponible: {:0.2}",
             self.investment_cap + self.total_invested
         );
     }
 
     async fn run(mut self) {
         println!("actor is running");
-        println!("investment capital: {}", self.investment_cap);
+        println!("investment capital: {:0.2}", self.investment_cap);
         while let Some(msg) = self.receiver.recv().await {
             self.handle_message(msg);
         }
@@ -118,6 +118,9 @@ async fn main() {
     // other thread
     let tx_one = tx.clone();
 
+    // other thread
+    let tx_two = tx.clone();
+
     // tx_one thread 1
     tokio::spawn(async move {
         for _ in 0..3 {
@@ -134,6 +137,14 @@ async fn main() {
             sell_actor.send().await;
         }
         drop(tx_one);
+    });
+
+    tokio::spawn(async move {
+        for _ in 0..5 {
+            let buy_actor = OrderActor::new(10.0, "$".to_owned(), Order::BUY, tx_two.clone());
+            buy_actor.send().await;
+        }
+        drop(tx_two);
     });
 
     // init actor
