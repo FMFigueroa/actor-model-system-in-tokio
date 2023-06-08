@@ -34,7 +34,7 @@ impl OrderBookActor {
     fn handle_message(&mut self, message: Message) {
         match message.order {
             Order::BUY => {
-                if message.amount >= self.investment_cap + self.total_invested {
+                if message.amount > self.investment_cap + self.total_invested {
                     println!("Rechazando compra de {}{}", message.ticker, message.amount);
                     let msn = String::from("fail");
                     let _ = message.respond_to.send(msn);
@@ -61,7 +61,8 @@ impl OrderBookActor {
         }
 
         println!(
-            "Saldo disponible: {:0.2}",
+            " ->> Saldo disponible: {}{:0.2}",
+            message.ticker,
             self.investment_cap + self.total_invested
         );
     }
