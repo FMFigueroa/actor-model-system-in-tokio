@@ -32,28 +32,43 @@ impl OrderBookActor {
     }
 
     fn handle_message(&mut self, message: Message) {
-        if message.amount + self.total_invested >= self.investment_cap {
-            println!(
-                "rejecting purchase, total invested: {1}{0}",
-                self.total_invested, message.ticker
-            );
-            let msn = String::from("fail");
-            let _ = message.respond_to.send(msn);
-        } else {
-            self.total_invested += message.amount;
-            println!(
-                "processing purchase, total invested: {1}{0}",
-                self.total_invested, message.ticker
-            );
-
-            // Respuesta al
-            let msn = String::from("success");
-            let _ = message.respond_to.send(msn);
+        match message.order {
+            Order::BUY => {
+                if message.amount >= self.investment_cap + self.total_invested {
+                    println!("Rechazando compra de {}{}", message.ticker, message.amount);
+                    let msn = String::from("fail");
+                    let _ = message.respond_to.send(msn);
+                } else {
+                    self.total_invested = self.total_invested - message.amount;
+                    println!(
+                        "Procesando compra, cantidad: {}{}",
+                        message.ticker, message.amount
+                    );
+                    let msn = String::from("success");
+                    let _ = message.respond_to.send(msn);
+                }
+            }
+            Order::SELL => {
+                self.total_invested = self.total_invested + message.amount;
+                // Simplemente imprime un mensaje para simular el procesamiento de una orden de venta
+                println!(
+                    "Procesando venta, cantidad: {}{}",
+                    message.ticker, message.amount
+                );
+                let msn = String::from("success");
+                let _ = message.respond_to.send(msn);
+            }
         }
+
+        println!(
+            "Saldo disponible: {}",
+            self.investment_cap + self.total_invested
+        );
     }
 
     async fn run(mut self) {
         println!("actor is running");
+        println!("investment capital: {}", self.investment_cap);
         while let Some(msg) = self.receiver.recv().await {
             self.handle_message(msg);
         }
@@ -61,19 +76,19 @@ impl OrderBookActor {
 }
 
 //==============================================================================
-struct BuyOrder {
+struct OrderActor {
     pub ticker: String,
     pub amount: f32,
     pub order: Order,
     pub sender: Sender<Message>,
 }
 
-impl BuyOrder {
-    fn new(amount: f32, ticker: String, sender: Sender<Message>) -> Self {
-        return BuyOrder {
+impl OrderActor {
+    fn new(amount: f32, ticker: String, order: Order, sender: Sender<Message>) -> Self {
+        return OrderActor {
             ticker,
             amount,
-            order: Order::BUY,
+            order,
             sender,
         };
     }
@@ -86,6 +101,7 @@ impl BuyOrder {
             ticker: self.ticker,
             respond_to: send,
         };
+
         let _ = self.sender.send(message).await;
         match recv.await {
             Err(e) => println!("{}", e),
@@ -104,8 +120,8 @@ async fn main() {
 
     // tx_one thread 1
     tokio::spawn(async move {
-        for _ in 1..4 {
-            let buy_actor = BuyOrder::new(5.0, "$".to_owned(), tx.clone());
+        for _ in 0..3 {
+            let buy_actor = OrderActor::new(5.0, "$".to_owned(), Order::BUY, tx.clone());
             buy_actor.send().await;
         }
         drop(tx);
@@ -113,14 +129,14 @@ async fn main() {
 
     // tx thread 2
     tokio::spawn(async move {
-        for _ in 1..4 {
-            let buy_actor = BuyOrder::new(5.0, "$".to_owned(), tx_one.clone());
-            buy_actor.send().await;
+        for _ in 0..5 {
+            let sell_actor = OrderActor::new(10.0, "$".to_owned(), Order::SELL, tx_one.clone());
+            sell_actor.send().await;
         }
         drop(tx_one);
     });
 
     // init actor
-    let actor = OrderBookActor::new(rx, 20.0);
+    let actor = OrderBookActor::new(rx, 10.0);
     actor.run().await;
 }
