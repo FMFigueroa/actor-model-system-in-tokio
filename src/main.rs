@@ -1,3 +1,5 @@
+use serde::{Deserialize, Serialize};
+use std::{fs::File, io::Write};
 use tokio::sync::{mpsc, mpsc::Sender, oneshot};
 
 //==============================================================================
@@ -21,6 +23,28 @@ pub struct OrderBookActor {
     pub investment_cap: f32,
 }
 
+#[derive(Debug, Serialize, Deserialize)]
+pub struct OrderRecord {
+    pub order: Order,
+    pub ticker: String,
+    pub amount: f32,
+    pub response: String,
+}
+
+impl Serialize for OrderRecord {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        let mut state = serializer.serialize_struct("OrderRecord", 4)?;
+        state.serialize_field("order", &self.order)?;
+        state.serialize_field("ticker", &self.ticker)?;
+        state.serialize_field("amount", &self.amount)?;
+        state.serialize_field("response", &self.response)?;
+        state.end()
+    }
+}
+
 impl OrderBookActor {
     // Constructor
     fn new(receiver: mpsc::Receiver<Message>, investment_cap: f32) -> Self {
@@ -32,6 +56,7 @@ impl OrderBookActor {
     }
 
     fn handle_message(&mut self, message: Message) {
+        let msn = String::from("success");
         match message.order {
             Order::BUY => {
                 if message.amount > self.investment_cap + self.total_invested {
@@ -44,8 +69,8 @@ impl OrderBookActor {
                         "Procesando compra, cantidad: {}{:0.2}",
                         message.ticker, message.amount
                     );
-                    let msn = String::from("success");
-                    let _ = message.respond_to.send(msn);
+                    //let msn = String::from("success");
+                    //let _ = message.respond_to.send(msn);
                 }
             }
             Order::SELL => {
@@ -55,9 +80,24 @@ impl OrderBookActor {
                     "Procesando venta, cantidad: {}{:0.2}",
                     message.ticker, message.amount
                 );
-                let msn = String::from("success");
-                let _ = message.respond_to.send(msn);
+                //let msn = String::from("success");
+                //let _ = message.respond_to.send(msn);
             }
+        }
+
+        // Almacenar la orden en un archivo JSON
+        let order = OrderRecord {
+            order: message.order,
+            ticker: message.ticker,
+            amount: message.amount,
+            response: msn,
+        };
+
+        fn store_order(order: Message) -> std::io::Result<()> {
+            let json = serde_json::to_string(&order)?;
+            let mut file = File::create("db/orders.json")?;
+            file.write_all(json.as_bytes())?;
+            Ok(())
         }
 
         println!(
@@ -65,6 +105,9 @@ impl OrderBookActor {
             message.ticker,
             self.investment_cap + self.total_invested
         );
+
+        // Enviar la respuesta al remitente
+        let _ = message.respond_to.send(msn);
     }
 
     async fn run(mut self) {
@@ -75,6 +118,8 @@ impl OrderBookActor {
         }
     }
 }
+
+//==============================================================================
 
 //==============================================================================
 struct OrderActor {
