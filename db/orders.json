@@ -1,5 +1,0 @@
-[
-  { "order": "BUY", "ticker": "BTC", "amount": 5.5 },
-  { "order": "BUY", "ticker": "ETH", "amount": 9.5 },
-  { "order": "BUY", "ticker": "PKT", "amount": 2.5 }
-]

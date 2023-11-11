@@ -1,8 +1,14 @@
+use autometrics::{autometrics, prometheus_exporter};
+use axum::{
+    routing::{get, get_service},
+    Router,
+};
+use std::net::SocketAddr;
 use tokio::{
     sync::{mpsc, mpsc::Sender, oneshot},
     time::{sleep, Duration},
 };
-
+use tower_http::services::ServeDir;
 use tracing::info;
 use tracing_subscriber::EnvFilter;
 
@@ -37,6 +43,7 @@ impl OrderBookActor {
         };
     }
 
+    #[autometrics]
     fn handle_message(&mut self, message: Message) {
         match message.order {
             Order::BUY => {
@@ -91,6 +98,7 @@ impl OrderActor {
         };
     }
 
+    #[autometrics]
     async fn send(self) {
         let (send, recv) = oneshot::channel();
         let message = Message {
@@ -110,7 +118,10 @@ impl OrderActor {
 
 //==============================================================================
 #[tokio::main]
-async fn main() {
+async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    // Set up the exporter to collect metrics
+    prometheus_exporter::init();
+
     tracing_subscriber::fmt()
         .without_time() // For early local development.
         .with_target(false)
@@ -125,9 +136,9 @@ async fn main() {
     // other thread
     let tx_two = tx.clone();
 
-    // tx_one thread 1
+    // tx_one thread 1 | BUY
     tokio::spawn(async move {
-        for _ in 0..3 {
+        for _ in 0..15 {
             let buy_actor = OrderActor::new(5.0, "$".to_owned(), Order::BUY, tx.clone());
             buy_actor.send().await;
             sleep(Duration::from_secs(1)).await;
@@ -135,18 +146,19 @@ async fn main() {
         drop(tx);
     });
 
-    // tx thread 2
+    // tx thread 2 | SELL
     tokio::spawn(async move {
         for _ in 0..5 {
             let sell_actor = OrderActor::new(10.0, "$".to_owned(), Order::SELL, tx_one.clone());
             sell_actor.send().await;
-            sleep(Duration::from_secs(2)).await;
+            sleep(Duration::from_secs(8)).await;
         }
         drop(tx_one);
     });
 
+    // tx thread 3 | BUY
     tokio::spawn(async move {
-        for _ in 0..5 {
+        for _ in 0..7 {
             let buy_actor = OrderActor::new(10.0, "$".to_owned(), Order::BUY, tx_two.clone());
             buy_actor.send().await;
             sleep(Duration::from_secs(3)).await;
@@ -155,6 +167,26 @@ async fn main() {
     });
 
     // init actor
-    let actor = OrderBookActor::new(rx, 10.0);
-    actor.run().await;
+    let actor = OrderBookActor::new(rx, 100.0);
+    tokio::spawn(async move { actor.run().await });
+
+    // Web server with Axum for Prometheus
+    let web_addr: SocketAddr = "127.0.0.1:8080".parse()?;
+    info!("WebServer listening on http://{web_addr}\n");
+
+    let app = Router::new()
+        .route("/metrics", get(|| async { prometheus_exporter::encode_http_response() }))
+        .fallback_service(routes_static());
+
+    axum::Server::bind(&web_addr)
+        .serve(app.into_make_service())
+        .await
+        .expect("Web server failed");
+
+    Ok(())
+}
+
+// region: ---Static Route
+fn routes_static() -> Router {
+    Router::new().nest_service("/", get_service(ServeDir::new("web-folder/")))
 }
