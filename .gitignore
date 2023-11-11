@@ -57,3 +57,6 @@ Thumbs.db
 # Tests #
 #########
 dhat-heap.json
+
+# Metrics
+.autometrics
