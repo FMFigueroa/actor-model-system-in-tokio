@@ -15,7 +15,7 @@ This demo presents a simple financial asset exchange system, where concurrent ac
 ``` 
 cargo run
 ```
-<p align="justify">Spin up local Prometheus and start scraping your application that listens on [Prometheus](http://localhost:8080/metrics).</p>
+pin up local Prometheus and start scraping your application that listens on [Prometheus](http://localhost:8080/metrics).
 
 ### Terminal 2 - To run Autometrics (see pre requirements).
 ```
