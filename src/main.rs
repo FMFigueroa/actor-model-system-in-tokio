@@ -1,4 +1,10 @@
-use tokio::sync::{mpsc, mpsc::Sender, oneshot};
+use tokio::{
+    sync::{mpsc, mpsc::Sender, oneshot},
+    time::{sleep, Duration},
+};
+
+use tracing::info;
+use tracing_subscriber::EnvFilter;
 
 //==============================================================================
 #[derive(Debug, Clone)]
@@ -40,10 +46,7 @@ impl OrderBookActor {
                     let _ = message.respond_to.send(msn);
                 } else {
                     self.total_invested = self.total_invested - message.amount;
-                    println!(
-                        "Procesando compra, cantidad: {}{:0.2}",
-                        message.ticker, message.amount
-                    );
+                    println!("Procesando compra, cantidad: {}{:0.2}", message.ticker, message.amount);
                     let msn = String::from("success");
                     let _ = message.respond_to.send(msn);
                 }
@@ -51,25 +54,19 @@ impl OrderBookActor {
             Order::SELL => {
                 self.total_invested = self.total_invested + message.amount;
                 // Simplemente imprime un mensaje para simular el procesamiento de una orden de venta
-                println!(
-                    "Procesando venta, cantidad: {}{:0.2}",
-                    message.ticker, message.amount
-                );
+                println!("Procesando venta, cantidad: {}{:0.2}", message.ticker, message.amount);
                 let msn = String::from("success");
                 let _ = message.respond_to.send(msn);
             }
         }
 
-        println!(
-            " ->> Saldo disponible: {}{:0.2}",
-            message.ticker,
-            self.investment_cap + self.total_invested
-        );
+        info!(" Saldo disponible: {}{:0.2}", message.ticker, self.investment_cap + self.total_invested);
     }
 
     async fn run(mut self) {
-        println!("actor is running");
-        println!("investment capital: {:0.2}", self.investment_cap);
+        // init actor
+        info!("actor is running");
+        info!("investment capital: {:0.2}\n", self.investment_cap);
         while let Some(msg) = self.receiver.recv().await {
             self.handle_message(msg);
         }
@@ -106,7 +103,7 @@ impl OrderActor {
         let _ = self.sender.send(message).await;
         match recv.await {
             Err(e) => println!("{}", e),
-            Ok(outcome) => println!("here is the outcome: {}", outcome),
+            Ok(outcome) => println!("here is the outcome: {}\n", outcome),
         }
     }
 }
@@ -114,6 +111,12 @@ impl OrderActor {
 //==============================================================================
 #[tokio::main]
 async fn main() {
+    tracing_subscriber::fmt()
+        .without_time() // For early local development.
+        .with_target(false)
+        .with_env_filter(EnvFilter::from_default_env())
+        .init();
+
     // init channel
     let (tx, rx) = mpsc::channel::<Message>(1);
     // other thread
@@ -127,6 +130,7 @@ async fn main() {
         for _ in 0..3 {
             let buy_actor = OrderActor::new(5.0, "$".to_owned(), Order::BUY, tx.clone());
             buy_actor.send().await;
+            sleep(Duration::from_secs(1)).await;
         }
         drop(tx);
     });
@@ -136,6 +140,7 @@ async fn main() {
         for _ in 0..5 {
             let sell_actor = OrderActor::new(10.0, "$".to_owned(), Order::SELL, tx_one.clone());
             sell_actor.send().await;
+            sleep(Duration::from_secs(2)).await;
         }
         drop(tx_one);
     });
@@ -144,6 +149,7 @@ async fn main() {
         for _ in 0..5 {
             let buy_actor = OrderActor::new(10.0, "$".to_owned(), Order::BUY, tx_two.clone());
             buy_actor.send().await;
+            sleep(Duration::from_secs(3)).await;
         }
         drop(tx_two);
     });

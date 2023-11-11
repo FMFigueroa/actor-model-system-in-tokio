@@ -1,5 +1,5 @@
 # Maximum line width
-max_width = 100
+max_width = 150
 comment_width = 100
 
 # How to reorder modules, functions, etc
