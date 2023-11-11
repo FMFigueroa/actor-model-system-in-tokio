@@ -4,8 +4,6 @@
 
 The Actor Model System with Tokyo is a powerful combination that allows you to build concurrent and parallel systems in Rust without having any external infrastructure such as a database.
 
-You can test it if you want with `cargo run`
-
 ## About
 This demo presents a simple financial asset exchange system, where concurrent actors submit buy and sell orders to a single order book based on mpsc which stands for "multi-producer, single-consumer", the order book updates its status in consequence with the generation of messages. Additionally, a web server is implemented to expose Prometheus metrics through Autometrics and expose performance information.
 
@@ -17,13 +15,13 @@ This demo presents a simple financial asset exchange system, where concurrent ac
 ``` 
 cargo run
 ```
-<p align="justify">Spin up local Prometheus and start scraping your application that listens on http://localhost:8080/metrics.</p>
+<p align="justify">Spin up local Prometheus and start scraping your application that listens on [Prometheus](http://localhost:8080/metrics).</p>
 
 ### Terminal 2 - To run Autometrics (see pre requirements).
 ```
 am start :8080
 ```
-Explore your request metrics in [Autometrics](http://127.0.0.1:6789/explorer/#/functions)
+Explore your request metrics in [Autometrics](http://127.0.0.1:6789/explorer/#/functions/details/s/autometrics/m/actor_model_system_in_tokio/handle_message)
 
 ![](./public/img/autometrics.png)
 
