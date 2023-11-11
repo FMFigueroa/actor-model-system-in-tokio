@@ -59,4 +59,4 @@ Thumbs.db
 dhat-heap.json
 
 # Metrics
-.autometrics
+/.autometrics
